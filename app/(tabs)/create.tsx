@@ -15,24 +15,22 @@ import { router } from 'expo-router';
 import moment from 'moment';
 import axios from 'axios';
 import { useAuth } from '@/contexts/AuthContext';
+import ImagePicker from '@/components/ImagePicker';
 
 interface DateRange {
   startDate: Date | null;
   endDate: Date | null;
 }
 
-const images = [
+const defaultImages = [
   'https://images.pexels.com/photos/1008155/pexels-photo-1008155.jpeg?auto=compress&cs=tinysrgb&w=800',
   'https://images.pexels.com/photos/1591373/pexels-photo-1591373.jpeg?auto=compress&cs=tinysrgb&w=800',
   'https://images.pexels.com/photos/1591056/pexels-photo-1591056.jpeg?auto=compress&cs=tinysrgb&w=800',
-  'https://images.pexels.com/photos/1450353/pexels-photo-1450353.jpeg?auto=compress&cs=tinysrgb&w=800',
-  'https://images.pexels.com/photos/1591447/pexels-photo-1591447.jpeg?auto=compress&cs=tinysrgb&w=800',
-  'https://images.pexels.com/photos/1450360/pexels-photo-1450360.jpeg?auto=compress&cs=tinysrgb&w=800',
 ];
 
 export default function CreateTripScreen() {
   const [tripName, setTripName] = useState('');
-  const [selectedImage, setSelectedImage] = useState(images[0]);
+  const [selectedImage, setSelectedImage] = useState(defaultImages[0]);
   const [dateRange, setDateRange] = useState<DateRange>({ startDate: null, endDate: null });
   const [showImagePicker, setShowImagePicker] = useState(false);
   const { userId } = useAuth();
@@ -159,33 +157,41 @@ export default function CreateTripScreen() {
             </View>
 
             <Pressable
-              onPress={() => setShowImagePicker(!showImagePicker)}
+              onPress={() => setShowImagePicker(true)}
               style={styles.imageCard}>
               <FontAwesome name="photo" size={25} color="black" />
               <Text style={styles.optionTitle}>Choose Image</Text>
             </Pressable>
           </View>
 
-          {showImagePicker && (
-            <View style={styles.imageGrid}>
-              {images.map((image, index) => (
+          <View style={styles.quickImageSelection}>
+            <Text style={styles.quickSelectionTitle}>Quick Selection:</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickImages}>
+              {defaultImages.map((imageUrl, index) => (
                 <Pressable
                   key={index}
-                  onPress={() => {
-                    setSelectedImage(image);
-                    setShowImagePicker(false);
-                  }}
-                  style={styles.imageOption}>
+                  onPress={() => setSelectedImage(imageUrl)}
+                  style={[
+                    styles.quickImageContainer,
+                    selectedImage === imageUrl && styles.selectedQuickImage
+                  ]}>
                   <ImageBackground
-                    source={{ uri: image }}
-                    style={styles.imagePreview}
-                    imageStyle={styles.imagePreviewStyle}
+                    source={{ uri: imageUrl }}
+                    style={styles.quickImage}
+                    imageStyle={styles.quickImageStyle}
                   />
                 </Pressable>
               ))}
-            </View>
-          )}
+            </ScrollView>
+          </View>
         </ScrollView>
+
+        <ImagePicker
+          visible={showImagePicker}
+          onClose={() => setShowImagePicker(false)}
+          onSelectImage={setSelectedImage}
+          selectedImage={selectedImage}
+        />
       </ImageBackground>
     </SafeAreaView>
   );
@@ -274,6 +280,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 20,
+    marginBottom: 20,
   },
   timezoneCard: {
     flex: 1,
@@ -298,21 +305,35 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#505050',
   },
-  imageGrid: {
+  quickImageSelection: {
+    marginTop: 10,
+  },
+  quickSelectionTitle: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 10,
+  },
+  quickImages: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 20,
-    gap: 10,
   },
-  imageOption: {
-    width: '30%',
-    aspectRatio: 1,
+  quickImageContainer: {
+    width: 80,
+    height: 60,
+    marginRight: 10,
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'transparent',
   },
-  imagePreview: {
+  selectedQuickImage: {
+    borderColor: '#4B61D1',
+  },
+  quickImage: {
     width: '100%',
     height: '100%',
   },
-  imagePreviewStyle: {
-    borderRadius: 10,
+  quickImageStyle: {
+    borderRadius: 6,
   },
 });
