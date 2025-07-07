@@ -1,75 +1,258 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import {
+  StyleSheet,
+  Text,
+  View,
+  SafeAreaView,
+  ScrollView,
+  Image,
+  Pressable,
+  ImageBackground,
+} from 'react-native';
+import React, { useContext, useEffect, useState } from 'react';
+import { AntDesign, Ionicons } from '@expo/vector-icons';
+import moment from 'moment';
+import axios from 'axios';
+import { useAuth } from '@/contexts/AuthContext';
+import { router } from 'expo-router';
 
-import { HelloWave } from '@/components/HelloWave';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
+interface Trip {
+  _id: string;
+  tripName: string;
+  startDate: string;
+  endDate: string;
+  startDay: string;
+  endDay: string;
+  background: string;
+  host: string;
+  travelers: string[];
+  createdAt: string;
+}
 
 export default function HomeScreen() {
+  const currentYear = moment().year();
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { userId, logout, userInfo } = useAuth();
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    if (userId) {
+      fetchUserData();
+      fetchTrips();
+    }
+  }, [userId]);
+
+  const fetchUserData = async () => {
+    try {
+      const response = await axios.get(`http://localhost:8000/user/${userId}`);
+      setUser(response.data);
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+    }
+  };
+
+  const fetchTrips = async () => {
+    try {
+      const response = await axios.get(`http://localhost:8000/trips/${userId}`);
+      setTrips(response.data);
+      setLoading(false);
+    } catch (error) {
+      console.error('Error fetching trips:', error);
+      setLoading(false);
+    }
+  };
+
+  const handleTripPress = (trip: Trip) => {
+    router.push({
+      pathname: '/trip/[id]',
+      params: { id: trip._id, tripData: JSON.stringify(trip) }
+    });
+  };
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+    <SafeAreaView style={styles.container}>
+      <ScrollView>
+        <View style={styles.header}>
+          <Ionicons onPress={logout} name="person" size={30} color="orange" />
+          <View style={styles.headerActions}>
+            <AntDesign name="search1" size={30} color="orange" />
+            <Pressable onPress={() => router.push('/create')}>
+              <AntDesign name="plus" size={30} color="orange" />
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={styles.titleSection}>
+          <Text style={styles.title}>My Trips</Text>
+          <Text style={styles.year}>{currentYear}</Text>
+        </View>
+
+        <View style={styles.tripsContainer}>
+          {trips?.map((item, index) => (
+            <Pressable
+              key={item._id}
+              style={styles.tripCard}
+              onPress={() => handleTripPress(item)}>
+              <ImageBackground
+                imageStyle={styles.tripImage}
+                style={styles.tripBackground}
+                source={{ uri: item?.background }}>
+                <View style={styles.tripHeader}>
+                  <Text style={styles.tripDates}>
+                    {item?.startDate} - {item?.endDate}
+                  </Text>
+                  <Text style={styles.tripCreated}>
+                    {moment(item.createdAt).format('MMMM Do')}
+                  </Text>
+                </View>
+                <Text style={styles.tripName}>{item?.tripName}</Text>
+              </ImageBackground>
+            </Pressable>
+          ))}
+        </View>
+
+        <View style={styles.promoSection}>
+          <Image
+            style={styles.promoImage}
+            source={{
+              uri: 'https://images.pexels.com/photos/1008155/pexels-photo-1008155.jpeg?auto=compress&cs=tinysrgb&w=400&h=220&fit=crop',
+            }}
+          />
+        </View>
+
+        <View style={styles.ctaSection}>
+          <Text style={styles.ctaTitle}>Organize your next trip</Text>
+          <Text style={styles.ctaDescription}>
+            Create your next trip and plan the activities of your itinerary
+          </Text>
+          <Pressable
+            onPress={() => router.push('/create')}
+            style={styles.ctaButton}>
+            <Text style={styles.ctaButtonText}>Create a Trip</Text>
+          </Pressable>
+          <View style={styles.ctaImageContainer}>
+            <Image
+              style={styles.ctaImage}
+              source={{
+                uri: 'https://images.pexels.com/photos/1008155/pexels-photo-1008155.jpeg?auto=compress&cs=tinysrgb&w=150&h=120&fit=crop',
+              }}
+            />
+          </View>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
+  container: {
+    flex: 1,
+    backgroundColor: 'white',
+  },
+  header: {
+    padding: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 15,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  titleSection: {
+    padding: 10,
+  },
+  title: {
+    fontSize: 25,
+    fontWeight: 'bold',
+  },
+  year: {
+    marginTop: 6,
+    fontSize: 19,
+    color: 'orange',
+    fontWeight: '600',
+  },
+  tripsContainer: {
+    padding: 15,
+  },
+  tripCard: {
+    marginTop: 15,
+  },
+  tripBackground: {
+    width: '100%',
+    height: 220,
+  },
+  tripImage: {
+    borderRadius: 10,
+  },
+  tripHeader: {
+    padding: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  tripDates: {
+    fontSize: 17,
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  tripCreated: {
+    fontSize: 17,
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  tripName: {
+    fontSize: 19,
+    fontWeight: 'bold',
+    color: 'white',
+    marginHorizontal: 15,
+  },
+  promoSection: {
+    padding: 10,
+  },
+  promoImage: {
+    width: '96%',
+    height: 220,
+    resizeMode: 'contain',
+    alignSelf: 'center',
+    borderRadius: 20,
+  },
+  ctaSection: {
+    marginTop: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  ctaTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  ctaDescription: {
+    marginTop: 15,
+    color: 'gray',
+    width: 250,
+    textAlign: 'center',
+    fontSize: 16,
+  },
+  ctaButton: {
+    marginTop: 25,
+    backgroundColor: '#383838',
+    padding: 14,
+    width: 200,
+    borderRadius: 25,
+  },
+  ctaButtonText: {
+    textAlign: 'center',
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  ctaImageContainer: {
+    marginTop: 20,
+  },
+  ctaImage: {
+    width: 150,
+    height: 120,
   },
 });

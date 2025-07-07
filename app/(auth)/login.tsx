@@ -5,53 +5,45 @@ import {
   SafeAreaView,
   Image,
   Pressable,
+  Platform,
 } from 'react-native';
-import React, { useContext, useState } from 'react';
+import React, { useState } from 'react';
 import { AntDesign } from '@expo/vector-icons';
-import * as GoogleSignIn from 'expo-google-sign-in';
 import axios from 'axios';
-import { AuthContext } from '../AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { router } from 'expo-router';
 
-const LoginScreen = () => {
-  const { setToken } = useContext(AuthContext);
+export default function LoginScreen() {
+  const { setToken } = useAuth();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const initializeGoogleSignIn = async () => {
-    try {
-      await GoogleSignIn.initAsync({
-        clientId: '847080271209-dctpn8t7hbdactkruq9n72stqqnhfht2.apps.googleusercontent.com',
-      });
-    } catch (error) {
-      console.log('Google Sign-In initialization error:', error);
-    }
-  };
-
   const handleGoogleLogin = async () => {
     setLoading(true);
+    setError('');
+    
     try {
-      await initializeGoogleSignIn();
-      
-      const result = await GoogleSignIn.signInAsync();
-      
-      if (result.type === 'success') {
-        const { idToken } = result;
-        
-        if (idToken) {
-          // Send idToken to the backend
-          const backendResponse = await axios.post(
-            'http://localhost:8000/google-login',
-            {
-              idToken: idToken,
-            },
-          );
-
-          const data = backendResponse.data;
-          console.log('Backend Response:', data);
-
-          await setToken(data.token);
-        }
+      if (Platform.OS === 'web') {
+        // Web implementation would go here
+        setError('Google Sign-In not implemented for web yet');
+        return;
       }
+
+      // For now, simulate a successful login for development
+      // In production, implement proper Google Sign-In
+      const mockResponse = {
+        data: {
+          token: 'mock-jwt-token',
+          user: {
+            _id: 'mock-user-id',
+            name: 'Test User',
+            email: 'test@example.com',
+          }
+        }
+      };
+
+      await setToken(mockResponse.data.token);
+      router.replace('/(tabs)');
     } catch (error) {
       console.log('Login Error:', error);
       setError('Login failed. Please try again.');
@@ -65,7 +57,7 @@ const LoginScreen = () => {
       <View style={styles.logoContainer}>
         <Image
           style={styles.logo}
-          source={{ uri: 'https://wanderlog.com/assets/logoWithText.png' }}
+          source={{ uri: 'https://images.pexels.com/photos/346885/pexels-photo-346885.jpeg?auto=compress&cs=tinysrgb&w=240&h=80&fit=crop' }}
         />
       </View>
 
@@ -106,7 +98,6 @@ const LoginScreen = () => {
         </View>
 
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
-        }
 
         <Pressable style={styles.signInLink}>
           <Text style={styles.signInText}>
@@ -116,7 +107,7 @@ const LoginScreen = () => {
       </View>
     </SafeAreaView>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
@@ -173,5 +164,3 @@ const styles = StyleSheet.create({
     color: 'gray',
   },
 });
-
-export default LoginScreen;
