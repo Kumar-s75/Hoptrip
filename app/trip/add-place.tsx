@@ -7,26 +7,20 @@ import {
   Pressable,
   ScrollView,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocalSearchParams, router } from 'expo-router';
 import { AntDesign } from '@expo/vector-icons';
-import axios from 'axios';
-
-interface SearchResult {
-  place_id: string;
-  name: string;
-  formatted_address: string;
-  rating?: number;
-  price_level?: number;
-  types: string[];
-}
+import { googlePlacesService, PlaceSearchResult } from '@/services/googlePlaces';
+import { apiService } from '@/services/api';
 
 export default function AddPlaceScreen() {
   const { tripId } = useLocalSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchResults, setSearchResults] = useState<PlaceSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const [searching, setSearching] = useState(false);
   const inputRef = useRef<TextInput>(null);
 
   useEffect(() => {
@@ -41,52 +35,63 @@ export default function AddPlaceScreen() {
       return;
     }
 
-    setLoading(true);
+    setSearching(true);
     try {
-      // Mock search results for demo
-      // In production, integrate with Google Places API
-      const mockResults: SearchResult[] = [
+      const results = await googlePlacesService.searchPlaces(query);
+      setSearchResults(results);
+    } catch (error) {
+      console.error('Error searching places:', error);
+      
+      // Fallback to mock data if API fails
+      const mockResults: PlaceSearchResult[] = [
         {
-          place_id: 'mock_1',
+          place_id: `mock_${Date.now()}_1`,
           name: `${query} Restaurant`,
           formatted_address: '123 Main St, City, State',
           rating: 4.5,
           price_level: 2,
-          types: ['restaurant', 'food', 'establishment']
+          types: ['restaurant', 'food', 'establishment'],
+          geometry: {
+            location: { lat: 12.9716, lng: 77.5946 }
+          }
         },
         {
-          place_id: 'mock_2',
+          place_id: `mock_${Date.now()}_2`,
           name: `${query} Museum`,
           formatted_address: '456 Culture Ave, City, State',
           rating: 4.2,
-          types: ['museum', 'tourist_attraction', 'establishment']
+          types: ['museum', 'tourist_attraction', 'establishment'],
+          geometry: {
+            location: { lat: 12.9716, lng: 77.5946 }
+          }
         },
         {
-          place_id: 'mock_3',
+          place_id: `mock_${Date.now()}_3`,
           name: `${query} Park`,
           formatted_address: '789 Nature Blvd, City, State',
           rating: 4.7,
-          types: ['park', 'tourist_attraction', 'establishment']
+          types: ['park', 'tourist_attraction', 'establishment'],
+          geometry: {
+            location: { lat: 12.9716, lng: 77.5946 }
+          }
         }
       ];
-
+      
       setSearchResults(mockResults);
-    } catch (error) {
-      console.error('Error searching places:', error);
-      Alert.alert('Error', 'Failed to search places');
+      Alert.alert(
+        'Using Mock Data',
+        'Google Places API not configured. Using sample data for demonstration.'
+      );
     } finally {
-      setLoading(false);
+      setSearching(false);
     }
   };
 
-  const addPlaceToTrip = async (place: SearchResult) => {
+  const addPlaceToTrip = async (place: PlaceSearchResult) => {
     try {
       setLoading(true);
       
-      // In production, this would call the actual API
-      await axios.post(`http://localhost:8000/trip/${tripId}/addPlace`, {
-        placeId: place.place_id
-      });
+      await apiService.addPlaceToTrip(tripId as string, place.place_id);
 
       Alert.alert('Success', 'Place added to trip!', [
         { text: 'OK', onPress: () => router.back() }
@@ -122,6 +127,13 @@ export default function AddPlaceScreen() {
     );
   };
 
+  const renderPriceLevel = (priceLevel?: number) => {
+    if (!priceLevel) return null;
+    
+    const dollarSigns = '$'.repeat(priceLevel);
+    return <Text style={styles.priceLevel}>{dollarSigns}</Text>;
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -155,13 +167,17 @@ export default function AddPlaceScreen() {
               <AntDesign name="close" size={20} color="gray" />
             </Pressable>
           )}
+          {searching && (
+            <ActivityIndicator size="small" color="#4B61D1" />
+          )}
         </View>
       </View>
 
       <ScrollView style={styles.content}>
         {loading && (
           <View style={styles.loadingContainer}>
-            <Text style={styles.loadingText}>Searching...</Text>
+            <ActivityIndicator size="large" color="#4B61D1" />
+            <Text style={styles.loadingText}>Adding place to trip...</Text>
           </View>
         )}
 
@@ -172,12 +188,16 @@ export default function AddPlaceScreen() {
               <Pressable
                 key={place.place_id}
                 onPress={() => addPlaceToTrip(place)}
-                style={styles.resultCard}>
+                style={styles.resultCard}
+                disabled={loading}>
                 <View style={styles.resultHeader}>
                   <Text style={styles.placeName} numberOfLines={2}>
                     {place.name}
                   </Text>
-                  {renderStars(place.rating)}
+                  <View style={styles.ratingPriceContainer}>
+                    {renderStars(place.rating)}
+                    {renderPriceLevel(place.price_level)}
+                  </View>
                 </View>
                 
                 <Text style={styles.placeAddress} numberOfLines={2}>
@@ -203,7 +223,7 @@ export default function AddPlaceScreen() {
           </View>
         )}
 
-        {searchQuery.length > 0 && searchResults.length === 0 && !loading && (
+        {searchQuery.length > 0 && searchResults.length === 0 && !searching && (
           <View style={styles.noResultsContainer}>
             <Text style={styles.noResultsText}>No places found</Text>
             <Text style={styles.noResultsSubtext}>Try a different search term</Text>
@@ -217,6 +237,12 @@ export default function AddPlaceScreen() {
             <Text style={styles.instructionsText}>
               Start typing to search for restaurants, attractions, hotels, and more to add to your trip
             </Text>
+            <View style={styles.tipsContainer}>
+              <Text style={styles.tipsTitle}>Search Tips:</Text>
+              <Text style={styles.tipText}>• Try "restaurants near me"</Text>
+              <Text style={styles.tipText}>• Search for specific places like "Eiffel Tower"</Text>
+              <Text style={styles.tipText}>• Use categories like "museums" or "parks"</Text>
+            </View>
           </View>
         )}
       </ScrollView>
@@ -274,6 +300,7 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
     color: 'gray',
+    marginTop: 10,
   },
   resultsContainer: {
     gap: 15,
@@ -307,10 +334,14 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 10,
   },
+  ratingPriceContainer: {
+    alignItems: 'flex-end',
+  },
   ratingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
+    marginBottom: 2,
   },
   starsContainer: {
     flexDirection: 'row',
@@ -322,6 +353,11 @@ const styles = StyleSheet.create({
   ratingText: {
     fontSize: 12,
     color: 'gray',
+  },
+  priceLevel: {
+    fontSize: 14,
+    color: '#4CAF50',
+    fontWeight: 'bold',
   },
   placeAddress: {
     fontSize: 14,
@@ -376,8 +412,8 @@ const styles = StyleSheet.create({
   },
   instructionsContainer: {
     alignItems: 'center',
-    paddingVertical: 80,
-    paddingHorizontal: 40,
+    paddingVertical: 40,
+    paddingHorizontal: 20,
   },
   instructionsTitle: {
     fontSize: 20,
@@ -391,5 +427,23 @@ const styles = StyleSheet.create({
     color: 'gray',
     textAlign: 'center',
     lineHeight: 22,
+    marginBottom: 30,
+  },
+  tipsContainer: {
+    alignSelf: 'stretch',
+    backgroundColor: '#f8f9fa',
+    padding: 20,
+    borderRadius: 12,
+  },
+  tipsTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    color: '#333',
+  },
+  tipText: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 5,
   },
 });

@@ -7,17 +7,21 @@ import {
   Pressable,
   ScrollView,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocalSearchParams, router } from 'expo-router';
 import { AntDesign, Ionicons } from '@expo/vector-icons';
-import axios from 'axios';
+import { googlePlacesService, PlaceDetails } from '@/services/googlePlaces';
+import { apiService } from '@/services/api';
 
 export default function DefineActivityScreen() {
   const { tripId, activityType, date } = useLocalSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPlace, setSelectedPlace] = useState<any>(null);
-  const [placeDetails, setPlaceDetails] = useState<any>(null);
+  const [placeDetails, setPlaceDetails] = useState<PlaceDetails | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [searching, setSearching] = useState(false);
   const inputRef = useRef<TextInput>(null);
 
   useEffect(() => {
@@ -29,60 +33,92 @@ export default function DefineActivityScreen() {
   const searchPlaces = async (query: string) => {
     if (!query.trim()) return;
 
+    setSearching(true);
     try {
-      // This would integrate with Google Places API
-      // For now, we'll simulate a search result
+      const results = await googlePlacesService.searchPlaces(query);
+      if (results.length > 0) {
+        const firstResult = results[0];
+        setSelectedPlace(firstResult);
+        await fetchPlaceDetails(firstResult.place_id);
+      }
+    } catch (error) {
+      console.error('Error searching places:', error);
+      
+      // Fallback to mock data
       const mockPlace = {
-        place_id: 'mock_place_id',
+        place_id: `mock_${Date.now()}`,
         name: query,
         formatted_address: 'Sample Address, City',
         rating: 4.5,
         price_level: 2,
         types: ['restaurant', 'food', 'establishment'],
         geometry: {
-          location: {
-            lat: 12.9716,
-            lng: 77.5946
-          }
+          location: { lat: 12.9716, lng: 77.5946 }
         }
       };
 
       setSelectedPlace(mockPlace);
-      fetchPlaceDetails(mockPlace.place_id);
-    } catch (error) {
-      console.error('Error searching places:', error);
+      await fetchMockPlaceDetails(mockPlace.place_id, query);
+      
+      Alert.alert(
+        'Using Mock Data',
+        'Google Places API not configured. Using sample data for demonstration.'
+      );
+    } finally {
+      setSearching(false);
     }
   };
 
   const fetchPlaceDetails = async (placeId: string) => {
     try {
-      // Mock place details
-      const mockDetails = {
-        name: selectedPlace?.name || searchQuery,
-        phoneNumber: '+91 98765 43210',
-        website: 'https://example.com',
-        openingHours: ['Monday: 9:00 AM – 10:00 PM'],
-        photos: ['https://images.pexels.com/photos/262978/pexels-photo-262978.jpeg?auto=compress&cs=tinysrgb&w=400'],
-        reviews: [
-          {
-            authorName: 'John Doe',
-            rating: 5,
-            text: 'Great place to visit!'
-          }
-        ],
-        briefDescription: 'A wonderful place to experience local culture and cuisine.',
-        geometry: {
-          location: {
-            lat: 12.9716,
-            lng: 77.5946
-          }
-        }
-      };
-
-      setPlaceDetails(mockDetails);
+      const details = await googlePlacesService.getPlaceDetails(placeId);
+      setPlaceDetails(details);
     } catch (error) {
       console.error('Error fetching place details:', error);
+      await fetchMockPlaceDetails(placeId, selectedPlace?.name || searchQuery);
     }
+  };
+
+  const fetchMockPlaceDetails = async (placeId: string, name: string) => {
+    const mockDetails: PlaceDetails = {
+      place_id: placeId,
+      name: name,
+      formatted_address: 'Sample Address, City, State',
+      formatted_phone_number: '+1 (555) 123-4567',
+      website: 'https://example.com',
+      opening_hours: {
+        weekday_text: ['Monday: 9:00 AM – 10:00 PM'],
+        open_now: true,
+      },
+      photos: [
+        {
+          photo_reference: 'mock_photo_ref',
+          height: 400,
+          width: 400,
+        }
+      ],
+      reviews: [
+        {
+          author_name: 'John Doe',
+          rating: 5,
+          text: 'Great place to visit!',
+          time: Date.now(),
+        }
+      ],
+      types: ['restaurant', 'food', 'establishment'],
+      geometry: {
+        location: { lat: 12.9716, lng: 77.5946 },
+        viewport: {
+          northeast: { lat: 12.9816, lng: 77.6046 },
+          southwest: { lat: 12.9616, lng: 77.5846 },
+        },
+      },
+      editorial_summary: {
+        overview: 'A wonderful place to experience local culture and cuisine.',
+      },
+    };
+
+    setPlaceDetails(mockDetails);
   };
 
   const handleAddToItinerary = async () => {
@@ -91,20 +127,29 @@ export default function DefineActivityScreen() {
       return;
     }
 
+    setLoading(true);
     try {
       const activityData = {
         name: placeDetails.name,
-        date: date,
-        phoneNumber: placeDetails.phoneNumber,
+        date: date as string,
+        phoneNumber: placeDetails.formatted_phone_number,
         website: placeDetails.website,
-        openingHours: placeDetails.openingHours,
-        photos: placeDetails.photos,
-        reviews: placeDetails.reviews,
-        briefDescription: placeDetails.briefDescription,
+        openingHours: placeDetails.opening_hours?.weekday_text,
+        photos: placeDetails.photos?.map(photo => 
+          googlePlacesService.getPhotoUrl(photo.photo_reference)
+        ).filter(Boolean) || ['https://images.pexels.com/photos/262978/pexels-photo-262978.jpeg?auto=compress&cs=tinysrgb&w=400'],
+        reviews: placeDetails.reviews?.map(review => ({
+          authorName: review.author_name,
+          rating: review.rating,
+          text: review.text,
+        })),
+        briefDescription: placeDetails.editorial_summary?.overview || 
+                         placeDetails.reviews?.[0]?.text || 
+                         'A great place to visit during your trip.',
         geometry: placeDetails.geometry,
       };
 
-      await axios.post(`http://localhost:8000/trips/${tripId}/itinerary/${date}`, activityData);
+      await apiService.addActivityToItinerary(tripId as string, date as string, activityData);
       
       Alert.alert('Success', 'Activity added to itinerary!', [
         { text: 'OK', onPress: () => router.back() }
@@ -112,7 +157,16 @@ export default function DefineActivityScreen() {
     } catch (error) {
       console.error('Error adding activity:', error);
       Alert.alert('Error', 'Failed to add activity to itinerary');
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const handleManualEntry = () => {
+    router.push({
+      pathname: '/activity/manual',
+      params: { tripId, activityType, date }
+    });
   };
 
   return (
@@ -141,13 +195,19 @@ export default function DefineActivityScreen() {
               placeholder={`Search for ${activityType}`}
               returnKeyType="search"
             />
+            {searching && (
+              <ActivityIndicator size="small" color="#4B61D1" />
+            )}
           </View>
           
           {searchQuery && (
             <Pressable 
               onPress={() => searchPlaces(searchQuery)}
-              style={styles.searchButton}>
-              <Text style={styles.searchButtonText}>Search</Text>
+              style={styles.searchButton}
+              disabled={searching}>
+              <Text style={styles.searchButtonText}>
+                {searching ? 'Searching...' : 'Search'}
+              </Text>
             </Pressable>
           )}
         </View>
@@ -156,8 +216,15 @@ export default function DefineActivityScreen() {
           <View style={styles.selectedPlaceCard}>
             <View style={styles.placeHeader}>
               <Text style={styles.placeName}>{selectedPlace.name}</Text>
-              <Pressable onPress={handleAddToItinerary} style={styles.addButton}>
-                <Text style={styles.addButtonText}>Add to Itinerary</Text>
+              <Pressable 
+                onPress={handleAddToItinerary} 
+                style={[styles.addButton, loading && styles.addButtonDisabled]}
+                disabled={loading}>
+                {loading ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <Text style={styles.addButtonText}>Add to Itinerary</Text>
+                )}
               </Pressable>
             </View>
           </View>
@@ -165,18 +232,19 @@ export default function DefineActivityScreen() {
 
         {placeDetails && (
           <View style={styles.placeDetailsCard}>
-            {placeDetails.phoneNumber && (
+            {placeDetails.formatted_phone_number && (
               <View style={styles.detailRow}>
                 <AntDesign name="phone" size={23} color="#2a52be" />
-                <Text style={styles.detailText}>{placeDetails.phoneNumber}</Text>
+                <Text style={styles.detailText}>{placeDetails.formatted_phone_number}</Text>
               </View>
             )}
 
-            {placeDetails.openingHours && placeDetails.openingHours[0] && (
+            {placeDetails.opening_hours?.weekday_text?.[0] && (
               <View style={styles.detailRow}>
                 <Ionicons name="time-outline" size={23} color="#2a52be" />
                 <Text style={styles.detailText}>
-                  Open {placeDetails.openingHours[0].split(': ')[1]}
+                  {placeDetails.opening_hours.open_now ? 'Open now • ' : 'Closed • '}
+                  {placeDetails.opening_hours.weekday_text[0].split(': ')[1]}
                 </Text>
               </View>
             )}
@@ -184,21 +252,55 @@ export default function DefineActivityScreen() {
             {placeDetails.website && (
               <View style={styles.detailRow}>
                 <Ionicons name="earth" size={23} color="#2a52be" />
-                <Text style={styles.detailText}>{placeDetails.website}</Text>
+                <Text style={styles.detailText} numberOfLines={1}>
+                  {placeDetails.website}
+                </Text>
               </View>
             )}
 
-            {placeDetails.briefDescription && (
+            {placeDetails.formatted_address && (
+              <View style={styles.detailRow}>
+                <Ionicons name="location-outline" size={23} color="#2a52be" />
+                <Text style={styles.detailText}>{placeDetails.formatted_address}</Text>
+              </View>
+            )}
+
+            {placeDetails.editorial_summary?.overview && (
               <View style={styles.descriptionContainer}>
                 <Text style={styles.descriptionTitle}>About this place</Text>
-                <Text style={styles.descriptionText}>{placeDetails.briefDescription}</Text>
+                <Text style={styles.descriptionText}>
+                  {placeDetails.editorial_summary.overview}
+                </Text>
+              </View>
+            )}
+
+            {placeDetails.reviews && placeDetails.reviews.length > 0 && (
+              <View style={styles.reviewsContainer}>
+                <Text style={styles.reviewsTitle}>Recent Review</Text>
+                <View style={styles.reviewCard}>
+                  <View style={styles.reviewHeader}>
+                    <Text style={styles.reviewAuthor}>
+                      {placeDetails.reviews[0].author_name}
+                    </Text>
+                    <View style={styles.reviewRating}>
+                      <Text style={styles.reviewRatingText}>
+                        {placeDetails.reviews[0].rating}
+                      </Text>
+                      <Text style={styles.reviewStar}>★</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.reviewText} numberOfLines={3}>
+                    {placeDetails.reviews[0].text}
+                  </Text>
+                </View>
               </View>
             )}
           </View>
         )}
 
         <View style={styles.manualEntrySection}>
-          <Pressable style={styles.manualEntryButton}>
+          <Pressable onPress={handleManualEntry} style={styles.manualEntryButton}>
+            <AntDesign name="edit" size={20} color="#666" />
             <Text style={styles.manualEntryText}>Enter Manually</Text>
           </Pressable>
         </View>
@@ -241,7 +343,7 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: 'pink',
+    backgroundColor: '#FF69B4',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -285,6 +387,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     paddingVertical: 8,
     borderRadius: 20,
+    minWidth: 120,
+    alignItems: 'center',
+  },
+  addButtonDisabled: {
+    opacity: 0.6,
   },
   addButtonText: {
     color: 'white',
@@ -330,17 +437,67 @@ const styles = StyleSheet.create({
     color: '#666',
     lineHeight: 20,
   },
+  reviewsContainer: {
+    marginTop: 15,
+    paddingTop: 15,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  reviewsTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  reviewCard: {
+    backgroundColor: '#f8f9fa',
+    padding: 12,
+    borderRadius: 8,
+  },
+  reviewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  reviewAuthor: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  reviewRating: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  reviewRatingText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  reviewStar: {
+    color: '#FFD700',
+    fontSize: 14,
+  },
+  reviewText: {
+    fontSize: 13,
+    color: '#666',
+    lineHeight: 18,
+  },
   manualEntrySection: {
     alignItems: 'center',
     marginTop: 30,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
   },
   manualEntryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingVertical: 12,
     paddingHorizontal: 20,
+    gap: 8,
   },
   manualEntryText: {
     fontWeight: '500',
-    color: 'gray',
+    color: '#666',
     fontSize: 16,
   },
 });

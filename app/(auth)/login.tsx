@@ -6,15 +6,15 @@ import {
   Image,
   Pressable,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import React, { useState } from 'react';
 import { AntDesign } from '@expo/vector-icons';
-import axios from 'axios';
 import { useAuth } from '@/contexts/AuthContext';
 import { router } from 'expo-router';
 
 export default function LoginScreen() {
-  const { setToken } = useAuth();
+  const { login } = useAuth();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -23,26 +23,7 @@ export default function LoginScreen() {
     setError('');
     
     try {
-      if (Platform.OS === 'web') {
-        // Web implementation would go here
-        setError('Google Sign-In not implemented for web yet');
-        return;
-      }
-
-      // For now, simulate a successful login for development
-      // In production, implement proper Google Sign-In
-      const mockResponse = {
-        data: {
-          token: 'mock-jwt-token',
-          user: {
-            _id: 'mock-user-id',
-            name: 'Test User',
-            email: 'test@example.com',
-          }
-        }
-      };
-
-      await setToken(mockResponse.data.token);
+      await login();
       router.replace('/(tabs)');
     } catch (error) {
       console.log('Login Error:', error);
@@ -52,6 +33,14 @@ export default function LoginScreen() {
     }
   };
 
+  const handleEmailLogin = () => {
+    setError('Email login not implemented yet. Please use Google Sign-In.');
+  };
+
+  const handleFacebookLogin = () => {
+    setError('Facebook login not implemented yet. Please use Google Sign-In.');
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.logoContainer}>
@@ -59,51 +48,79 @@ export default function LoginScreen() {
           style={styles.logo}
           source={{ uri: 'https://images.pexels.com/photos/346885/pexels-photo-346885.jpeg?auto=compress&cs=tinysrgb&w=240&h=80&fit=crop' }}
         />
+        <Text style={styles.appName}>HopTrip</Text>
+        <Text style={styles.tagline}>Plan your perfect journey</Text>
       </View>
 
       <View style={styles.buttonContainer}>
-        <View style={styles.button}>
+        <Pressable
+          onPress={handleFacebookLogin}
+          style={styles.button}>
           <AntDesign
             style={styles.buttonIcon}
             name="facebook-square"
             size={24}
-            color="blue"
+            color="#1877F2"
           />
-          <Text style={styles.buttonText}>Sign Up With Facebook</Text>
-        </View>
+          <Text style={styles.buttonText}>Continue with Facebook</Text>
+        </Pressable>
 
         <Pressable
           onPress={handleGoogleLogin}
           disabled={loading}
-          style={[styles.button, styles.pressableButton]}>
+          style={[styles.button, styles.pressableButton, loading && styles.buttonDisabled]}>
           <AntDesign
             style={styles.buttonIcon}
             name="google"
             size={24}
-            color="red"
+            color="#DB4437"
           />
-          <Text style={styles.buttonText}>
-            {loading ? 'Signing in...' : 'Sign Up With Google'}
-          </Text>
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color="#666" />
+              <Text style={styles.buttonText}>Signing in...</Text>
+            </View>
+          ) : (
+            <Text style={styles.buttonText}>Continue with Google</Text>
+          )}
         </Pressable>
 
-        <View style={styles.button}>
+        <Pressable onPress={handleEmailLogin} style={styles.button}>
           <AntDesign
             style={styles.buttonIcon}
             name="mail"
             size={24}
-            color="black"
+            color="#666"
           />
-          <Text style={styles.buttonText}>Sign Up With Email</Text>
-        </View>
+          <Text style={styles.buttonText}>Continue with Email</Text>
+        </Pressable>
 
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        {error ? (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        ) : null}
+
+        <View style={styles.infoContainer}>
+          <Text style={styles.infoText}>
+            {Platform.OS === 'web' 
+              ? 'Demo mode: Click Google Sign-In to continue with mock authentication'
+              : 'Google Sign-In requires additional setup for native platforms'
+            }
+          </Text>
+        </View>
 
         <Pressable style={styles.signInLink}>
           <Text style={styles.signInText}>
             Already have an account? Sign In
           </Text>
         </Pressable>
+      </View>
+
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>
+          By continuing, you agree to our Terms of Service and Privacy Policy
+        </Text>
       </View>
     </SafeAreaView>
   );
@@ -115,52 +132,116 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
   },
   logoContainer: {
-    marginTop: 30,
+    marginTop: 60,
     alignItems: 'center',
+    paddingHorizontal: 20,
   },
   logo: {
     width: 240,
     height: 80,
-    resizeMode: 'contain',
+    resizeMode: 'cover',
+    borderRadius: 12,
+  },
+  appName: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    marginTop: 20,
+    color: '#333',
+  },
+  tagline: {
+    fontSize: 16,
+    color: '#666',
+    marginTop: 8,
+    textAlign: 'center',
   },
   buttonContainer: {
-    marginTop: 70,
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    marginTop: 40,
   },
   button: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 10,
+    padding: 16,
     justifyContent: 'center',
     borderColor: '#E0E0E0',
-    margin: 12,
     borderWidth: 1,
-    borderRadius: 25,
-    marginTop: 20,
-    position: 'relative',
+    borderRadius: 12,
+    marginBottom: 16,
+    backgroundColor: 'white',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   pressableButton: {
     opacity: 1,
   },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
   buttonIcon: {
     position: 'absolute',
-    left: 10,
+    left: 16,
   },
   buttonText: {
     textAlign: 'center',
-    fontSize: 15,
-    fontWeight: '500',
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  errorContainer: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FCA5A5',
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
   },
   errorText: {
-    color: 'red',
+    color: '#DC2626',
     textAlign: 'center',
-    marginTop: 10,
+    fontSize: 14,
+  },
+  infoContainer: {
+    backgroundColor: '#F0F9FF',
+    borderColor: '#BAE6FD',
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+  },
+  infoText: {
+    color: '#0369A1',
+    textAlign: 'center',
+    fontSize: 13,
+    lineHeight: 18,
   },
   signInLink: {
-    marginTop: 12,
+    marginTop: 20,
+    alignItems: 'center',
   },
   signInText: {
+    fontSize: 16,
+    color: '#4B61D1',
+    fontWeight: '500',
+  },
+  footer: {
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+    alignItems: 'center',
+  },
+  footerText: {
+    fontSize: 12,
+    color: '#666',
     textAlign: 'center',
-    fontSize: 15,
-    color: 'gray',
+    lineHeight: 16,
   },
 });
