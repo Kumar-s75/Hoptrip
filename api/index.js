@@ -33,6 +33,302 @@ app.listen(port, () => {
 const Trip = require('./models/trip');
 const User = require('./models/user');
 
+// Middleware for authentication
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ message: 'Access token required' });
+  }
+
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) {
+      return res.status(403).json({ message: 'Invalid or expired token' });
+    }
+    req.user = user;
+    next();
+  });
+};
+
+// Update trip endpoint
+app.put('/trip/:tripId', authenticateToken, async (req, res) => {
+  const { tripId } = req.params;
+  const updateData = req.body;
+
+  try {
+    const trip = await Trip.findById(tripId);
+    
+    if (!trip) {
+      return res.status(404).json({ message: 'Trip not found' });
+    }
+
+    // Check if user is host or traveler
+    if (trip.host.toString() !== req.user.userId && !trip.travelers.includes(req.user.userId)) {
+      return res.status(403).json({ message: 'Not authorized to update this trip' });
+    }
+
+    const updatedTrip = await Trip.findByIdAndUpdate(
+      tripId,
+      { ...updateData, updatedAt: new Date() },
+      { new: true }
+    ).populate('travelers', 'name email photo');
+
+    res.status(200).json(updatedTrip);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Delete trip endpoint
+app.delete('/trip/:tripId', authenticateToken, async (req, res) => {
+  const { tripId } = req.params;
+
+  try {
+    const trip = await Trip.findById(tripId);
+    
+    if (!trip) {
+      return res.status(404).json({ message: 'Trip not found' });
+    }
+
+    // Only host can delete trip
+    if (trip.host.toString() !== req.user.userId) {
+      return res.status(403).json({ message: 'Only trip host can delete the trip' });
+    }
+
+    await Trip.findByIdAndDelete(tripId);
+    res.status(200).json({ message: 'Trip deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Remove traveler from trip
+app.delete('/trip/:tripId/traveler/:userId', authenticateToken, async (req, res) => {
+  const { tripId, userId } = req.params;
+
+  try {
+    const trip = await Trip.findById(tripId);
+    
+    if (!trip) {
+      return res.status(404).json({ message: 'Trip not found' });
+    }
+
+    // Check if user is host or the traveler themselves
+    if (trip.host.toString() !== req.user.userId && req.user.userId !== userId) {
+      return res.status(403).json({ message: 'Not authorized to remove this traveler' });
+    }
+
+    const updatedTrip = await Trip.findByIdAndUpdate(
+      tripId,
+      { $pull: { travelers: userId } },
+      { new: true }
+    ).populate('travelers', 'name email photo');
+
+    res.status(200).json(updatedTrip);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Get trip statistics
+app.get('/trip/:tripId/stats', authenticateToken, async (req, res) => {
+  const { tripId } = req.params;
+
+  try {
+    const trip = await Trip.findById(tripId);
+    
+    if (!trip) {
+      return res.status(404).json({ message: 'Trip not found' });
+    }
+
+    const stats = {
+      totalPlaces: trip.placesToVisit.length,
+      totalActivities: trip.itinerary.reduce((sum, day) => sum + day.activities.length, 0),
+      totalExpenses: trip.expenses.reduce((sum, expense) => sum + expense.price, 0),
+      budgetRemaining: trip.budget ? trip.budget - trip.expenses.reduce((sum, expense) => sum + expense.price, 0) : null,
+      travelerCount: trip.travelers.length + 1, // +1 for host
+      daysCount: trip.itinerary.length
+    };
+
+    res.status(200).json(stats);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Search trips (public trips)
+app.get('/trips/search', async (req, res) => {
+  const { query, tags, status } = req.query;
+
+  try {
+    let searchCriteria = { visibility: 'public' };
+
+    if (query) {
+      searchCriteria.$or = [
+        { tripName: { $regex: query, $options: 'i' } },
+        { notes: { $regex: query, $options: 'i' } }
+      ];
+    }
+
+    if (tags) {
+      const tagArray = tags.split(',');
+      searchCriteria.tags = { $in: tagArray };
+    }
+
+    if (status) {
+      searchCriteria.status = status;
+    }
+
+    const trips = await Trip.find(searchCriteria)
+      .populate('host', 'name photo')
+      .populate('travelers', 'name photo')
+      .limit(20)
+      .sort({ createdAt: -1 });
+
+    res.status(200).json(trips);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Update user profile
+app.put('/user/:userId', authenticateToken, async (req, res) => {
+  const { userId } = req.params;
+  const updateData = req.body;
+
+  try {
+    // Users can only update their own profile
+    if (req.user.userId !== userId) {
+      return res.status(403).json({ message: 'Not authorized to update this profile' });
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      updateData,
+      { new: true }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.status(200).json({ user: updatedUser });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Get user's trip statistics
+app.get('/user/:userId/stats', authenticateToken, async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+    const trips = await Trip.find({
+      $or: [{ host: userId }, { travelers: userId }]
+    });
+
+    const stats = {
+      totalTrips: trips.length,
+      hostedTrips: trips.filter(trip => trip.host.toString() === userId).length,
+      joinedTrips: trips.filter(trip => trip.travelers.includes(userId)).length,
+      totalExpenses: trips.reduce((sum, trip) => 
+        sum + trip.expenses.reduce((expSum, expense) => expSum + expense.price, 0), 0
+      ),
+      upcomingTrips: trips.filter(trip => 
+        new Date(trip.startDate) > new Date() && trip.status !== 'cancelled'
+      ).length,
+      completedTrips: trips.filter(trip => trip.status === 'completed').length
+    };
+
+    res.status(200).json(stats);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Remove activity from itinerary
+app.delete('/trips/:tripId/itinerary/:date/activity/:activityId', authenticateToken, async (req, res) => {
+  const { tripId, date, activityId } = req.params;
+
+  try {
+    const trip = await Trip.findById(tripId);
+    
+    if (!trip) {
+      return res.status(404).json({ message: 'Trip not found' });
+    }
+
+    // Check if user is host or traveler
+    if (trip.host.toString() !== req.user.userId && !trip.travelers.includes(req.user.userId)) {
+      return res.status(403).json({ message: 'Not authorized to modify this trip' });
+    }
+
+    const updatedTrip = await Trip.findByIdAndUpdate(
+      tripId,
+      {
+        $pull: {
+          'itinerary.$[entry].activities': { _id: activityId }
+        }
+      },
+      {
+        new: true,
+        arrayFilters: [{ 'entry.date': date }]
+      }
+    );
+
+    res.status(200).json({
+      message: 'Activity removed successfully',
+      itinerary: updatedTrip.itinerary
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// Remove expense
+app.delete('/trip/:tripId/expense/:expenseId', authenticateToken, async (req, res) => {
+  const { tripId, expenseId } = req.params;
+
+  try {
+    const trip = await Trip.findById(tripId);
+    
+    if (!trip) {
+      return res.status(404).json({ message: 'Trip not found' });
+    }
+
+    // Check if user is host or traveler
+    if (trip.host.toString() !== req.user.userId && !trip.travelers.includes(req.user.userId)) {
+      return res.status(403).json({ message: 'Not authorized to modify this trip' });
+    }
+
+    const updatedTrip = await Trip.findByIdAndUpdate(
+      tripId,
+      { $pull: { expenses: { _id: expenseId } } },
+      { new: true }
+    );
+
+    res.status(200).json({
+      message: 'Expense removed successfully',
+      expenses: updatedTrip.expenses
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Error handling middleware
+app.use((error, req, res, next) => {
+  console.error('Unhandled error:', error);
+  res.status(500).json({ 
+    message: 'Internal server error',
+    error: process.env.NODE_ENV === 'development' ? error.message : undefined
+  });
+});
+
+// 404 handler
+app.use('*', (req, res) => {
+  res.status(404).json({ message: 'Route not found' });
+});
 app.post('/trip', async (req, res) => {
   const {tripName, startDate, endDate, startDay, endDay, background, host} =
     req.body;

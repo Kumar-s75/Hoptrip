@@ -7,7 +7,17 @@ const userSchema = new mongoose.Schema(
     name: {type: String, required: true},
     email: {type: String, required: true, unique: true},
     photo: {type: String},
-    token: {type: String},
+    refreshToken: {type: String},
+    lastLogin: {type: Date, default: Date.now},
+    isActive: {type: Boolean, default: true},
+    preferences: {
+      currency: {type: String, default: 'USD'},
+      timezone: {type: String, default: 'UTC'},
+      notifications: {
+        email: {type: Boolean, default: true},
+        push: {type: Boolean, default: true},
+      }
+    }
   },
   {timestamps: true},
 );

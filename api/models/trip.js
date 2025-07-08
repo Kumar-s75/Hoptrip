@@ -143,10 +143,37 @@ const tripSchema = new mongoose.Schema({
   placesToVisit: [placeSchema],
 
   itinerary: [itinerarySchema],
+  status: {
+    type: String,
+    enum: ['planning', 'confirmed', 'ongoing', 'completed', 'cancelled'],
+    default: 'planning'
+  },
+  visibility: {
+    type: String,
+    enum: ['private', 'public', 'friends'],
+    default: 'private'
+  },
+  tags: [String],
+  notes: {type: String},
+  weather: {
+    forecast: [{
+      date: String,
+      temperature: {
+        high: Number,
+        low: Number
+      },
+      condition: String,
+      icon: String
+    }]
+  },
   createdAt: {
     type: Date,
     default: Date.now,
   },
+  updatedAt: {
+    type: Date,
+    default: Date.now,
+  }
 });
 
 const Trip = mongoose.model('Trip', tripSchema);
